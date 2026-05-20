@@ -1,13 +1,15 @@
-# EXTRACTION ET HARMONISATION DES DONNÉES DE POPULATION INSEE ----
+# ===========================================================================
+# POPULATION_HARMONIZATION.R
+# Extract and harmonize INSEE population data
+# ===========================================================================
 
-# LIBRARIES ----
 library(data.table)
 library(dplyr)
 library(readxl)
 library(tidyr)
 
 # ===========================================================================
-# CHEMINS
+# PATHS
 # ===========================================================================
 BASE_THESIS  <- "C:/Users/simon/Desktop/master_thesis"
 BASE_POP     <- file.path(BASE_THESIS, "population_xl")
@@ -20,14 +22,7 @@ TABLE_PASSAGE_FILE <- file.path(BASE_DECES, "passage-geo-2022.xlsx")
 dir.create(BASE_POP_OUT, recursive = TRUE, showWarnings = FALSE)
 
 # ===========================================================================
-# CHECK 1 — fichiers sources
-# ===========================================================================
-cat("=== CHECK 1 : FICHIERS SOURCES ===\n")
-cat("POP_FILE existe           :", file.exists(POP_FILE), "\n")
-cat("TABLE_PASSAGE_FILE existe :", file.exists(TABLE_PASSAGE_FILE), "\n")
-
-# ===========================================================================
-# TABLE DE PASSAGE
+# CROSSWALK TABLE
 # ===========================================================================
 table_passage <- read_excel(TABLE_PASSAGE_FILE, sheet = "PASSAGE_GEO_2022")
 names(table_passage)[1] <- "COM_AV"
@@ -39,27 +34,15 @@ table_passage_simple <- table_passage %>%
                 COM_AP = as.character(COM_AP)) %>%
   dplyr::filter(!is.na(COM_AV) & !is.na(COM_AP))
 
-cat("\n=== CHECK 2 : TABLE DE PASSAGE ===\n")
-cat("Lignes table_passage_simple :", nrow(table_passage_simple), "\n")
-
 # ===========================================================================
-# FONCTION D'EXTRACTION
+# EXTRACTION FUNCTION
 # ===========================================================================
 extract_and_harmonize <- function(sheet_name, annee) {
-  
+
   pop_raw <- read_excel(POP_FILE, sheet = sheet_name, skip = 13)
   names(pop_raw)[1:6] <- c("RR", "DR", "CR", "STABLE", "DR24", "LIBELLE")
   demo_cols <- names(pop_raw)[7:ncol(pop_raw)]
-  
-  cat(sprintf("  [%d] demo_cols exemple : %s\n", annee,
-              paste(head(demo_cols, 3), collapse = " | ")))
-  
-  test_col <- demo_cols[1]
-  cat(sprintf("  [%d] Test regex sur '%s' → age='%s' sexe='%s'\n",
-              annee, test_col,
-              sub(".*ageq_rec(\\d+)s.*",  "\\1", test_col),
-              sub(".*s(\\d+)rpop.*",      "\\1", test_col)))
-  
+
   pop <- pop_raw %>%
     dplyr::filter(!is.na(CR) & !is.na(DR)) %>%
     dplyr::mutate(
@@ -67,13 +50,12 @@ extract_and_harmonize <- function(sheet_name, annee) {
       CR  = sprintf("%03d", as.integer(CR)),
       COM = paste0(DR, CR)
     ) %>%
-    # Exclusion DOM-TOM + Corse
+    # Exclude overseas territories and Corsica
     dplyr::filter(!grepl("^(97|98|99|2[AB])", COM)) %>%
     dplyr::select(COM, dplyr::all_of(demo_cols)) %>%
     dplyr::mutate(dplyr::across(dplyr::all_of(demo_cols), ~as.numeric(.)))
-  
-  cat(sprintf("  [%d] Lignes après filtre COM : %d\n", annee, nrow(pop)))
-  
+
+  # Apply geographic crosswalk and aggregate to 2022 boundaries
   pop_harmonized <- pop %>%
     dplyr::left_join(table_passage_simple, by = c("COM" = "COM_AV")) %>%
     dplyr::mutate(COM_GEO2022 = ifelse(!is.na(COM_AP), COM_AP, COM)) %>%
@@ -82,19 +64,15 @@ extract_and_harmonize <- function(sheet_name, annee) {
     dplyr::summarise(dplyr::across(dplyr::all_of(demo_cols), ~sum(., na.rm = TRUE)),
                      .groups = "drop") %>%
     dplyr::rename(COM = COM_GEO2022) %>%
-    # Filtre défensif post-harmonisation
+    # Defensive post-harmonization filter
     dplyr::filter(!grepl("^2[AB]", COM))
-  
-  cat(sprintf("  [%d] Communes après harmonisation : %d\n", annee, nrow(pop_harmonized)))
-  
-  # Vérification absence Corse
+
+  # Corsica check
   n_corse <- sum(grepl("^2[AB]", pop_harmonized$COM))
-  if (n_corse == 0) {
-    cat(sprintf("  [%d] ✅ Corse correctement exclue.\n", annee))
-  } else {
-    cat(sprintf("  [%d] ❌ ATTENTION : %d communes Corse encore présentes !\n", annee, n_corse))
+  if (n_corse > 0) {
+    warning(sprintf("[%d] %d Corsican communes still present after harmonization.", annee, n_corse))
   }
-  
+
   pop_long <- pop_harmonized %>%
     tidyr::pivot_longer(cols = -COM, names_to = "variable", values_to = "POPULATION") %>%
     dplyr::mutate(
@@ -121,22 +99,14 @@ extract_and_harmonize <- function(sheet_name, annee) {
     ) %>%
     dplyr::select(COM, AGE_QUINQUENNAL, SEXE, POPULATION) %>%
     dplyr::mutate(YEAR = annee)
-  
-  cat(sprintf("  [%d] Lignes pop_long : %d | NA AGE : %d | NA SEXE : %d\n",
-              annee, nrow(pop_long),
-              sum(is.na(pop_long$AGE_QUINQUENNAL)),
-              sum(is.na(pop_long$SEXE))))
-  
+
   return(pop_long)
 }
 
 # ===========================================================================
-# EXTRACTION
+# EXTRACTION BY YEAR
 # ===========================================================================
-cat("\n=== CHECK 3 : EXTRACTION PAR ANNÉE ===\n")
-
 sheets_dispo <- excel_sheets(POP_FILE)
-cat("Sheets disponibles :", paste(sheets_dispo, collapse = ", "), "\n")
 
 annees_config <- list(
   list(sheet = "COM_1982", annee = 1982),
@@ -151,39 +121,24 @@ annees_config <- list(
 pop_list <- list()
 for (i in seq_along(annees_config)) {
   config <- annees_config[[i]]
-  if (!config$sheet %in% sheets_dispo) {
-    cat(sprintf("  Sheet '%s' absent — ignoré.\n", config$sheet))
-    next
-  }
+  if (!config$sheet %in% sheets_dispo) next
   pop_list[[length(pop_list) + 1]] <- extract_and_harmonize(config$sheet, config$annee)
 }
 
 # ===========================================================================
-# CHECK 4 — après bind_rows
+# BIND AND VALIDATE
 # ===========================================================================
-cat("\n=== CHECK 4 : FUSION ===\n")
 pop_final <- dplyr::bind_rows(pop_list) %>%
   dplyr::select(YEAR, COM, AGE_QUINQUENNAL, SEXE, POPULATION) %>%
   dplyr::arrange(YEAR, COM, AGE_QUINQUENNAL, SEXE)
 
-cat("Lignes pop_final           :", nrow(pop_final), "\n")
-cat("NA AGE_QUINQUENNAL         :", sum(is.na(pop_final$AGE_QUINQUENNAL)), "\n")
-cat("NA SEXE                    :", sum(is.na(pop_final$SEXE)), "\n")
-cat("Tranches AGE uniques       :", paste(sort(unique(pop_final$AGE_QUINQUENNAL)), collapse = ", "), "\n")
-cat("SEXE uniques               :", paste(unique(pop_final$SEXE), collapse = ", "), "\n")
-cat("Années présentes           :", paste(sort(unique(pop_final$YEAR)), collapse = ", "), "\n")
-cat("Premiers COM               :", paste(head(unique(pop_final$COM), 5), collapse = ", "), "\n")
-
-# Vérification absence Corse
 n_corse_final <- length(unique(pop_final$COM[grepl("^2[AB]", pop_final$COM)]))
-if (n_corse_final == 0) {
-  cat("✅ Corse correctement exclue de pop_final.\n")
-} else {
-  cat(sprintf("❌ ATTENTION : %d communes Corse dans pop_final !\n", n_corse_final))
+if (n_corse_final > 0) {
+  warning(sprintf("%d Corsican communes in pop_final.", n_corse_final))
 }
 
 # ===========================================================================
-# AGRÉGATIONS + EXPORT RECENSEMENTS
+# AGGREGATIONS + EXPORT (census years)
 # ===========================================================================
 pop_sexe_total <- pop_final %>%
   dplyr::group_by(YEAR, COM, SEXE) %>%
@@ -201,17 +156,11 @@ pop_complete <- dplyr::bind_rows(pop_final, pop_sexe_total, pop_total) %>%
 fwrite(as.data.table(pop_complete),
        file.path(BASE_POP_OUT, "population_complete_1980_2022_geo2022.csv"))
 
-cat("\n=== CHECK 5 : EXPORT RECENSEMENTS ===\n")
-cat("Lignes pop_complete exportées :", nrow(pop_complete), "\n")
-
 # ===========================================================================
-# CHECK 6 — pivot_wider avant interpolation
+# PIVOT WIDE FOR INTERPOLATION
 # ===========================================================================
-cat("\n=== CHECK 6 : PIVOT_WIDER ===\n")
 pop_detail <- pop_final %>%
   dplyr::filter(!is.na(AGE_QUINQUENNAL) & !is.na(SEXE))
-
-cat("Lignes pop_detail (sans NA) :", nrow(pop_detail), "\n")
 
 pop_wide <- pop_detail %>%
   tidyr::pivot_wider(
@@ -221,16 +170,10 @@ pop_wide <- pop_detail %>%
     values_from  = POPULATION
   )
 
-cat("Lignes pop_wide             :", nrow(pop_wide), "\n")
-cat("Colonnes pop_wide           :", paste(names(pop_wide), collapse = ", "), "\n")
-
 # ===========================================================================
-# CHECK 7 — interpolation
+# LINEAR INTERPOLATION BETWEEN CENSUS YEARS
 # ===========================================================================
-cat("\n=== CHECK 7 : INTERPOLATION ===\n")
-
 annees_extraites <- sort(unique(pop_final$YEAR))
-cat("Années extraites pour interpolation :", paste(annees_extraites, collapse=", "), "\n")
 
 periodes <- list()
 for (i in 1:(length(annees_extraites) - 1)) {
@@ -250,12 +193,7 @@ for (periode in periodes) {
   col_avant <- paste0("POP_", periode$avant)
   col_apres <- paste0("POP_", periode$apres)
   n_ans     <- periode$apres - periode$avant
-  
-  cat(sprintf("  %d→%d : col_avant=%s existe=%s | col_apres=%s existe=%s\n",
-              periode$avant, periode$apres,
-              col_avant, col_avant %in% names(pop_wide),
-              col_apres, col_apres %in% names(pop_wide)))
-  
+
   for (annee in periode$annees) {
     w <- (annee - periode$avant) / n_ans
     pop_wide[[paste0("POP_", annee)]] <-
@@ -263,26 +201,20 @@ for (periode in periodes) {
   }
 }
 
+# Constant backcast for years before first census
 premier_rec <- min(annees_extraites)
 annees_avant_premier <- 1980:(premier_rec - 1)
 
 if (length(annees_avant_premier) > 0) {
   col_premier <- paste0("POP_", premier_rec)
-  cat(sprintf("\n  Extrapolation constante %d→[%s] par valeur de %d\n",
-              premier_rec,
-              paste(annees_avant_premier, collapse=","),
-              premier_rec))
   for (annee in annees_avant_premier) {
     pop_wide[[paste0("POP_", annee)]] <- pop_wide[[col_premier]]
   }
 }
 
 # ===========================================================================
-# CHECK 8 — après interpolation
+# PIVOT LONG + FINAL AGGREGATIONS
 # ===========================================================================
-cat("\n=== CHECK 8 : APRÈS INTERPOLATION ===\n")
-cat("Colonnes pop_wide après interp :", paste(sort(names(pop_wide)), collapse = ", "), "\n")
-
 pop_interpolee <- pop_wide %>%
   tidyr::pivot_longer(
     cols         = tidyr::starts_with("POP_"),
@@ -294,21 +226,11 @@ pop_interpolee <- pop_wide %>%
   dplyr::filter(YEAR >= 1980 & YEAR <= 2022) %>%
   dplyr::arrange(YEAR, COM, AGE_QUINQUENNAL, SEXE)
 
-cat("Lignes pop_interpolee          :", nrow(pop_interpolee), "\n")
-cat("NA POPULATION                  :", sum(is.na(pop_interpolee$POPULATION)), "\n")
-cat("Années présentes               :", paste(range(pop_interpolee$YEAR), collapse="-"), "\n")
-
-# Vérification absence Corse
 n_corse_interp <- length(unique(pop_interpolee$COM[grepl("^2[AB]", pop_interpolee$COM)]))
-if (n_corse_interp == 0) {
-  cat("✅ Corse correctement exclue des données interpolées.\n")
-} else {
-  cat(sprintf("❌ ATTENTION : %d communes Corse dans données interpolées !\n", n_corse_interp))
+if (n_corse_interp > 0) {
+  warning(sprintf("%d Corsican communes in interpolated data.", n_corse_interp))
 }
 
-# ===========================================================================
-# AGRÉGATIONS FINALES + EXPORT
-# ===========================================================================
 pop_sexe_total_i <- pop_interpolee %>%
   dplyr::group_by(YEAR, COM, SEXE) %>%
   dplyr::summarise(POPULATION = sum(POPULATION, na.rm = TRUE), .groups = "drop") %>%
@@ -322,28 +244,8 @@ pop_total_i <- pop_interpolee %>%
 pop_complete_interp <- dplyr::bind_rows(pop_interpolee, pop_sexe_total_i, pop_total_i) %>%
   dplyr::arrange(YEAR, COM, AGE_QUINQUENNAL, SEXE)
 
+# ===========================================================================
+# EXPORT
+# ===========================================================================
 output_file <- file.path(BASE_POP_OUT, "population_interpolee_1980_2022.csv")
 fwrite(as.data.table(pop_complete_interp), output_file)
-
-# ===========================================================================
-# CHECK 9 — fichier final
-# ===========================================================================
-cat("\n=== CHECK 9 : FICHIER FINAL ===\n")
-pop_test <- fread(output_file)
-cat("Lignes fichier final           :", nrow(pop_test), "\n")
-cat("Colonnes                       :", paste(names(pop_test), collapse = ", "), "\n")
-cat("Premiers COM                   :", paste(head(unique(pop_test$COM), 10), collapse = ", "), "\n")
-cat("Années présentes               :", paste(range(pop_test$YEAR), collapse = " - "), "\n")
-cat("Attendu                        : 1980 - 2022\n")
-cat("Tranches d'âge                 :", paste(sort(unique(pop_test$AGE_QUINQUENNAL)), collapse = ", "), "\n")
-cat("NA POPULATION                  :", sum(is.na(pop_test$POPULATION)), "\n")
-
-# Vérification finale absence Corse
-n_corse_test <- length(unique(pop_test$COM[grepl("^2[AB]", pop_test$COM)]))
-if (n_corse_test == 0) {
-  cat("✅ Corse correctement exclue du fichier final.\n")
-} else {
-  cat(sprintf("❌ ATTENTION : %d communes Corse dans fichier final !\n", n_corse_test))
-}
-
-cat("\nAttendu : ~34,310 communes (hors Corse), 1980-2022\n")
