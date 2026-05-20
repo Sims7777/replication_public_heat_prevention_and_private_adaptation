@@ -1,6 +1,6 @@
 # ===========================================================================
 # MERGE_CLIM.R
-# Merge : df_bins_mortality_1980_2019 × taux de climatisation (RG + DEP)
+# Merge: df_bins_mortality_1980_2019 x air conditioning rates (regional + departmental)
 # ===========================================================================
 
 library(data.table)
@@ -13,7 +13,7 @@ library(sf)
 library(ggplot2)
 
 # ===========================================================================
-# CHEMINS
+# PATHS
 # ===========================================================================
 BASE_THESIS   <- "C:/Users/simon/Desktop/master_thesis"
 BASE_LOGEMENT <- file.path(BASE_THESIS, "logement")
@@ -22,7 +22,7 @@ BASE_FINAL    <- file.path(BASE_THESIS, "final_data")
 dir.create(BASE_LOGEMENT, recursive = TRUE, showWarnings = FALSE)
 
 # ===========================================================================
-# MAPPING ANCIENNES RÉGIONS → NOUVELLES RÉGIONS (format post-2016)
+# OLD REGIONS → NEW REGIONS MAPPING (post-2016 format)
 # ===========================================================================
 REGION_MAPPING <- c(
   "11" = "11", "21" = "44", "22" = "32", "23" = "28", "24" = "24",
@@ -40,10 +40,8 @@ remap_rg <- function(df) {
 }
 
 # ===========================================================================
-# CHARGEMENT DES DONNÉES LOGEMENT
+# LOAD HOUSING SURVEY DATA
 # ===========================================================================
-cat("=== CHARGEMENT DONNÉES LOGEMENT ===\n")
-
 logement2001 <- read.csv(
   file.path(BASE_LOGEMENT, "2001/menage.csv"), sep = ";"
 ) %>%
@@ -73,7 +71,7 @@ logement2020 <- read.csv(
   mutate(ANNEE = 2020L, DEP = as.character(DEP), RG = as.character(RG))
 
 # ===========================================================================
-# REMAPPAGE RÉGIONS
+# REMAP REGIONS
 # ===========================================================================
 logement2001 <- remap_rg(logement2001)
 logement2006 <- remap_rg(logement2006)
@@ -83,7 +81,7 @@ df <- bind_rows(logement2001, logement2006, logement2013, logement2020) %>%
   mutate(CLIM = as.numeric(CLIM), POIDS = as.numeric(POIDS))
 
 # ===========================================================================
-# CALCUL DU TAUX DE CLIMATISATION
+# COMPUTE AC RATES
 # ===========================================================================
 calc_taux <- function(data, var_geo) {
   data %>%
@@ -104,14 +102,11 @@ clim_all <- bind_rows(
   calc_taux(df, "DEP")
 )
 
-cat("Taux observés (avant interpolation) :\n")
-print(clim_all %>% count(type, ANNEE))
-
 fwrite(as.data.table(clim_all),
        file.path(BASE_LOGEMENT, "clim_all_brut.csv"))
 
 # ===========================================================================
-# INTERPOLATION LINÉAIRE 2001–2020
+# LINEAR INTERPOLATION 2001-2020
 # ===========================================================================
 annees_cibles <- 2001:2020
 
@@ -140,38 +135,29 @@ clim_interpolated         <- interpoler_geo(clim_all)
 clim_regional_interp      <- clim_interpolated %>% filter(type == "RG")
 clim_departemental_interp <- clim_interpolated %>% filter(type == "DEP")
 
-cat("\nContrôle interpolation régionale :\n")
-print(clim_regional_interp %>% count(ANNEE))
-
 fwrite(as.data.table(clim_interpolated),
        file.path(BASE_LOGEMENT, "clim_interpolated_2001_2020.csv"))
 fwrite(as.data.table(clim_regional_interp),
        file.path(BASE_LOGEMENT, "clim_regional_post2016_2001_2020.csv"))
 
 # ===========================================================================
-# CHARGEMENT BASE PRINCIPALE
+# LOAD MAIN BASE
 # ===========================================================================
-cat("\n=== CHARGEMENT BASE BINS + MORTALITÉ ===\n")
 base <- fread(file.path(BASE_FINAL, "df_bins_mortality_1980_2019.csv"))
 
 base[, COM := as.character(COM)]
 base[, COM := trimws(COM)]
 base[!grepl("^2[AB]", COM), COM := formatC(as.integer(COM), width = 5, flag = "0")]
 
-# Exclusion Corse
+# Exclude Corsica
 base <- base[!grepl("^2[AB]", COM)]
 
 base[, year := as.integer(year)]
 base[, DEP  := substr(COM, 1, 2)]
 
-cat(sprintf("Lignes    : %d\n", nrow(base)))
-cat(sprintf("Communes  : %d\n", length(unique(base$COM))))
-cat(sprintf("Années    : %d-%d\n", min(base$year), max(base$year)))
-
 # ===========================================================================
-# CRÉATION DE RG_final (format post-2016)
+# BUILD RG_final (post-2016 format)
 # ===========================================================================
-cat("\n=== CRÉATION RG_final ===\n")
 base[, RG_final := fcase(
   DEP %in% c("75","77","78","91","92","93","94","95"), "11",
   DEP %in% c("18","28","36","37","41","45"),           "24",
@@ -185,12 +171,11 @@ base[, RG_final := fcase(
   DEP %in% c("09","11","12","30","31","32","34","46","48","65","66","81","82"), "76",
   DEP %in% c("01","03","07","15","26","38","42","43","63","69","73","74"), "84",
   DEP %in% c("04","05","06","13","83","84"),           "93",
-  default = NA_character_   # Corse supprimée ici
+  default = NA_character_
 )]
-cat(sprintf("Lignes avec RG_final : %d\n", sum(!is.na(base$RG_final))))
 
 # ===========================================================================
-# PRÉPARER TABLES CLIM
+# PREPARE CLIM TABLES
 # ===========================================================================
 clim_reg_prep <- as.data.table(clim_regional_interp)[
   , .(year = as.integer(ANNEE), RG = as.character(geo), taux_clim_RG = taux_clim)
@@ -199,11 +184,8 @@ clim_dep_prep <- as.data.table(clim_departemental_interp)[
   , .(year = as.integer(ANNEE), DEP = as.character(geo), taux_clim_DEP = taux_clim)
 ]
 
-cat(sprintf("Lignes clim régionales     : %d\n", nrow(clim_reg_prep)))
-cat(sprintf("Lignes clim départementales: %d\n", nrow(clim_dep_prep)))
-
 # ===========================================================================
-# FUSION 1 : clim régionale
+# MERGE 1: regional AC rate
 # ===========================================================================
 base[, RG_final := as.character(RG_final)]
 clim_reg_prep[, RG := as.character(RG)]
@@ -217,7 +199,7 @@ final_etape1 <- merge(
 )
 
 # ===========================================================================
-# FUSION 2 : clim départementale
+# MERGE 2: departmental AC rate
 # ===========================================================================
 final_etape1[,  DEP := as.character(DEP)]
 clim_dep_prep[, DEP := as.character(DEP)]
@@ -230,49 +212,21 @@ final_avec_clim <- merge(
 )
 
 # ===========================================================================
-# VÉRIFICATION ABSENCE CORSE
+# CORSICA CHECK
 # ===========================================================================
 n_corse <- length(unique(final_avec_clim[grepl("^2[AB]", COM), COM]))
-if (n_corse == 0) {
-  cat("\n✅ Corse correctement exclue du merge clim.\n")
-} else {
-  cat(sprintf("\n❌ ATTENTION : %d communes Corse encore présentes !\n", n_corse))
+if (n_corse > 0) {
+  warning(sprintf("%d Corsican communes still present after merge.", n_corse))
 }
-
-# ===========================================================================
-# QUALITÉ
-# ===========================================================================
-cat("\n=== RÉSULTATS FINAUX ===\n")
-cat(sprintf("Lignes totales                   : %d\n",   nrow(final_avec_clim)))
-cat(sprintf("Communes                         : %d\n",   length(unique(final_avec_clim$COM))))
-cat(sprintf("Lignes avec taux_clim_RG         : %d\n",   sum(!is.na(final_avec_clim$taux_clim_RG))))
-cat(sprintf("Lignes sans taux_clim_RG         : %d\n",   sum( is.na(final_avec_clim$taux_clim_RG))))
-cat(sprintf("Taux de couverture clim régional : %.2f%%\n",
-            sum(!is.na(final_avec_clim$taux_clim_RG)) / nrow(final_avec_clim) * 100))
-cat("Attendu couverture : ~47.5%% (années 2001-2019 sur 1980-2019)\n")
-
-cat("\n--- Couverture taux_clim_RG par année ---\n")
-print(
-  final_avec_clim[, .(
-    total     = .N,
-    avec_clim = sum(!is.na(taux_clim_RG)),
-    taux      = round(sum(!is.na(taux_clim_RG)) / .N * 100, 2)
-  ), by = "year"][order(year)]
-)
 
 # ===========================================================================
 # EXPORT
 # ===========================================================================
 OUT <- file.path(BASE_FINAL, "df_bins_mortality_clim_1980_2019.csv")
 fwrite(final_avec_clim, OUT)
-cat(sprintf("\n>>> Sauvegardé : %s\n", OUT))
-cat(sprintf("    %d lignes | %d communes | %d colonnes\n",
-            nrow(final_avec_clim),
-            length(unique(final_avec_clim$COM)),
-            ncol(final_avec_clim)))
 
 # ===========================================================================
-# PLOT : taux de climatisation par région 2001-2020
+# PLOT: AC rate by region 2001-2020
 # ===========================================================================
 ANNEES_OBS <- c(2001, 2006, 2013, 2020)
 
@@ -283,7 +237,6 @@ labels_regions <- c(
   "52" = "52 – Pays de la Loire",    "53" = "53 – Bretagne",
   "75" = "75 – Nouvelle-Aquitaine",  "76" = "76 – Occitanie",
   "84" = "84 – Auvergne-RA",         "93" = "93 – PACA"
-  # "94" supprimé : Corse exclue
 )
 
 plot_data  <- clim_regional_interp %>%
@@ -311,13 +264,13 @@ ggplot(plot_data, aes(x = ANNEE, y = taux_clim, color = geo, group = geo)) +
   scale_color_manual(
     values = scales::hue_pal()(length(labels_regions)),
     labels = labels_regions,
-    name   = "Région"
+    name   = "Region"
   ) +
   labs(
-    title    = "Taux de climatisation par région (2001–2020)",
-    subtitle = "Interpolation linéaire entre années d'enquête · Points = années observées",
-    x        = "Année",
-    y        = "Taux de climatisation"
+    title    = "Air conditioning rate by region (2001–2020)",
+    subtitle = "Linear interpolation between survey years · Points = observed years",
+    x        = "Year",
+    y        = "AC rate"
   ) +
   theme_minimal(base_size = 12) +
   theme(
@@ -331,4 +284,3 @@ ggsave(
   file.path(BASE_LOGEMENT, "taux_clim_regions_2001_2020.png"),
   width = 12, height = 7, dpi = 300
 )
-cat(">>> Plot sauvegardé.\n")
