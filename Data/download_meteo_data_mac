@@ -1,13 +1,12 @@
-First copy in the terminal (mac) : 
+# First copy in the terminal (mac):
 
-  
 cat > download_climate_data.sh << 'EOF'
 #!/bin/bash
-# Script de téléchargement des données climatiques 
+# Climate data download script
 
-set -e  # Arrêt en cas d'erreur
+set -e  # Stop on error
 
-# define dir
+# Define directories
 BASE_DIR="/Users/sims7/Desktop/master_thesis/data/temp"
 
 echo "=========================================="
@@ -15,80 +14,76 @@ echo "METEO DATA"
 echo "=========================================="
 echo ""
 
-
-echo "📁 Création de l'arborescence..."
+echo "Creating directory structure..."
 mkdir -p "$BASE_DIR/eobs_netcdf"
 mkdir -p "$BASE_DIR/shapefiles"
 mkdir -p "$BASE_DIR/insee"
 mkdir -p "$BASE_DIR/donnees_temperature"
 mkdir -p "$BASE_DIR/donnees_communes_annees"
 
-echo " Dir created"
+echo "Directories created"
 echo ""
 
-# Download
+# Download function
 download_file() {
     local url=$1
     local output=$2
     local description=$3
-    
-    echo "📥 Téléchargement: $description"
+
+    echo "Downloading: $description"
     curl -L --progress-bar -o "$output" "$url"
-    echo "✅ Terminé: $description"
+    echo "Done: $description"
     echo ""
 }
 
-# Télécharger E-OBS NetCDF files (v26.0e, 0.1 degree)
+# Download E-OBS NetCDF files (v26.0e, 0.1 degree)
 echo "=========================================="
-echo " DOWNLOAD E-OBS NetCDF (v26.0e)"
+echo "DOWNLOAD E-OBS NetCDF (v26.0e)"
 echo "=========================================="
 echo ""
 
 cd "$BASE_DIR/eobs_netcdf"
 
-# mean temp (TG)
+# Mean temperature (TG)
 download_file \
     "https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/tg_ens_mean_0.1deg_reg_v26.0e.nc" \
     "tg_ens_mean_0.1deg_reg_v26.0e.nc" \
-    "TG - Température moyenne (≈700 MB)"
+    "TG - Mean temperature (~700 MB)"
 
-# max temp (TX)
+# Max temperature (TX)
 download_file \
     "https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/tx_ens_mean_0.1deg_reg_v26.0e.nc" \
     "tx_ens_mean_0.1deg_reg_v26.0e.nc" \
-    "TX - Température maximale (≈700 MB)"
+    "TX - Maximum temperature (~700 MB)"
 
-# min temp (TN)
+# Min temperature (TN)
 download_file \
     "https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/tn_ens_mean_0.1deg_reg_v26.0e.nc" \
     "tn_ens_mean_0.1deg_reg_v26.0e.nc" \
-    "TN - Température minimale (≈700 MB)"
+    "TN - Minimum temperature (~700 MB)"
 
-# humidity (HU)
+# Relative humidity (HU)
 download_file \
     "https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/hu_ens_mean_0.1deg_reg_v26.0e.nc" \
     "hu_ens_mean_0.1deg_reg_v26.0e.nc" \
-    "HU - Humidité relative (≈700 MB)"
+    "HU - Relative humidity (~700 MB)"
 
-# rain (RR)
+# Precipitation (RR)
 download_file \
     "https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/rr_ens_mean_0.1deg_reg_v26.0e.nc" \
     "rr_ens_mean_0.1deg_reg_v26.0e.nc" \
-    "RR - Précipitations (≈700 MB)"
+    "RR - Precipitation (~700 MB)"
 
-# wind (FG)
+# Wind speed (FG)
 download_file \
     "https://knmi-ecad-assets-prd.s3.amazonaws.com/ensembles/data/Grid_0.1deg_reg_ensemble/fg_ens_mean_0.1deg_reg_v26.0e.nc" \
     "fg_ens_mean_0.1deg_reg_v26.0e.nc" \
-    "FG - Vitesse du vent (≈700 MB)"
+    "FG - Wind speed (~700 MB)"
 
-echo "All files E-OBS downloaded"
+echo "All E-OBS files downloaded"
 echo ""
 
-
-
-  
-# For others download
+# Manual downloads
 echo "=========================================="
 echo "MANUAL DOWNLOADS REQUIRED"
 echo "=========================================="
@@ -103,26 +98,28 @@ echo "   4. You should get: communes-20220101.shp (+ .dbf, .shx, .prj)"
 echo ""
 echo " INSEE OFFICIAL GEOGRAPHIC CODE 2022"
 echo "   1. Go to: https://www.insee.fr/fr/information/6051727"
-echo "   2. Click on 'Téléchargement des fichiers'"
+echo "   2. Click on 'Telecharger les fichiers'"
 echo "   3. Download 'Communes au 1er janvier 2022' (CSV)"
 echo "   4. Save as: $BASE_DIR/insee/commune_2022.csv"
 echo ""
+
 # Final summary
 echo "=========================================="
-echo " DOWNLOAD SUMMARY"
+echo "DOWNLOAD SUMMARY"
 echo "=========================================="
 echo ""
-echo " AUTOMATICALLY DOWNLOADED:"
+echo "AUTOMATICALLY DOWNLOADED:"
 echo "   - 6 E-OBS v26.0e NetCDF files (~4.2 GB total)"
 echo "   - TG, TX, TN, HU, RR, FG"
 echo ""
-echo " TO BE DOWNLOADED MANUALLY:"
+echo "TO BE DOWNLOADED MANUALLY:"
 echo "   - IGN communes shapefiles 2022"
 echo "   - INSEE commune_2022 CSV file"
 echo ""
-echo " All files stored in: $BASE_DIR"
+echo "All files stored in: $BASE_DIR"
 echo ""
-# Verification
+
+# File verification
 echo "=========================================="
 echo "FILE VERIFICATION"
 echo "=========================================="
@@ -131,6 +128,7 @@ cd "$BASE_DIR/eobs_netcdf"
 echo "Downloaded NetCDF files:"
 ls -lh *.nc 2>/dev/null || echo "No .nc files found"
 echo ""
+
 # Checksum (optional - to verify integrity)
 echo "Computing checksums (for verification)..."
 for file in *.nc; do
@@ -139,6 +137,7 @@ for file in *.nc; do
     fi
 done
 echo ""
+
 echo "=========================================="
 echo "SCRIPT COMPLETE"
 echo "=========================================="
@@ -149,8 +148,6 @@ echo "2. Run your R script for data processing"
 echo ""
 EOF
 
-
-  
-# Then paste in terminal (mac):
+# Then run in terminal (mac):
 chmod +x download_climate_data.sh
 ./download_climate_data.sh
