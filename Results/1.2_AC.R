@@ -2,6 +2,171 @@ library(data.table)
 library(dplyr)
 library(fixest)
 library(ggplot2)
+library(car)
+
+# ===========================================================================
+# LOAD
+# ===========================================================================
+df <- fread("C:/Users/simon/Desktop/master_thesis/final_data/df_final_reg_complet6.csv")
+
+# ===========================================================================
+# MEDIAN SPLIT ON 2001 REGIONAL AC RATE
+# ===========================================================================
+med_clim <- df %>%
+  filter(year == 2001) %>%
+  summarise(q = median(taux_clim_RG, na.rm = TRUE)) %>%
+  pull(q)
+
+reg_clim_groupe <- df %>%
+  filter(year == 2001) %>%
+  select(RG, taux_clim_RG) %>%
+  distinct() %>%
+  mutate(clim_groupe = ifelse(taux_clim_RG >= med_clim, "high", "low"))
+
+df_clim_high <- df %>%
+  filter(year >= 2001) %>%
+  inner_join(reg_clim_groupe %>% filter(clim_groupe == "high") %>% select(RG), by = "RG")
+
+df_clim_low <- df %>%
+  filter(year >= 2001) %>%
+  inner_join(reg_clim_groupe %>% filter(clim_groupe == "low") %>% select(RG), by = "RG")
+
+# ===========================================================================
+# QUARTILE SPLIT ON 2001 REGIONAL AC RATE
+# ===========================================================================
+quartiles <- df %>%
+  filter(year == 2001) %>%
+  summarise(
+    q1 = quantile(taux_clim_RG, 0.25, na.rm = TRUE),
+    q2 = quantile(taux_clim_RG, 0.50, na.rm = TRUE),
+    q3 = quantile(taux_clim_RG, 0.75, na.rm = TRUE)
+  )
+
+dep_clim_2001 <- df %>%
+  filter(year == 2001) %>%
+  mutate(clim_quartile = case_when(
+    taux_clim_RG <  quartiles$q1 ~ 1L,
+    taux_clim_RG <  quartiles$q2 ~ 2L,
+    taux_clim_RG <  quartiles$q3 ~ 3L,
+    TRUE                         ~ 4L
+  )) %>%
+  select(DEP, clim_quartile) %>%
+  distinct()
+
+df_clim    <- df %>% filter(year >= 2001) %>% left_join(dep_clim_2001, by = "DEP")
+df_clim_q1_2 <- df_clim %>% filter(clim_quartile %in% c(1, 2))
+df_clim_q3   <- df_clim %>% filter(clim_quartile == 3)
+df_clim_q4   <- df_clim %>% filter(clim_quartile == 4)
+
+# ===========================================================================
+# SHARED FORMULA COMPONENTS
+# ===========================================================================
+temp_bins <- c("tg_tbin_lt_m5", "tg_tbin_m5_0", "tg_tbin_0_5",
+               "tg_tbin_5_10",  "tg_tbin_10_15", "tg_tbin_20_25",
+               "tg_tbin_25_30", "tg_tbin_gt_30")
+
+weather_controls <- c("hubin_0_20", "hubin_40_60", "hubin_60_80", "hubin_80_100",
+                      "rrbin_0mm",  "rrbin_0_3",   "rrbin_10_100", "rrbin_gt_100",
+                      "fgbin_0_3",  "fgbin_10_20", "fgbin_gt_20")
+
+fe_str  <- "COM^month + month^year + DEP^year"
+df_2001 <- df[year >= 2001]
+
+# ===========================================================================
+# TABLE 2: TOTAL MORTALITY BY AC GROUP (low vs high)
+# ===========================================================================
+feols_low_total <- feols(
+  taux_mortalite_total ~
+    tg_tbin_lt_m5 + tg_tbin_m5_0 + tg_tbin_0_5 + tg_tbin_5_10 + tg_tbin_10_15 +
+    tg_tbin_20_25 + tg_tbin_25_30 + tg_tbin_gt_30 +
+    hubin_0_20 + hubin_40_60 + hubin_60_80 + hubin_80_100 +
+    rrbin_0mm + rrbin_0_3 + rrbin_10_100 + rrbin_gt_100 +
+    fgbin_0_3 + fgbin_10_20 + fgbin_gt_20 |
+    COM^month + month^year + DEP^year,
+  data    = df_clim_low,
+  cluster = ~COM,
+  weights = ~value_estimated_population
+)
+
+feols_high_total <- feols(
+  taux_mortalite_total ~
+    tg_tbin_lt_m5 + tg_tbin_m5_0 + tg_tbin_0_5 + tg_tbin_5_10 + tg_tbin_10_15 +
+    tg_tbin_20_25 + tg_tbin_25_30 + tg_tbin_gt_30 +
+    hubin_0_20 + hubin_40_60 + hubin_60_80 + hubin_80_100 +
+    rrbin_0mm + rrbin_0_3 + rrbin_10_100 + rrbin_gt_100 +
+    fgbin_0_3 + fgbin_10_20 + fgbin_gt_20 |
+    COM^month + month^year + DEP^year,
+  data    = df_clim_high,
+  cluster = ~COM,
+  weights = ~value_estimated_population
+)
+
+etable(feols_low_total, feols_high_total, tex = TRUE)
+
+# ===========================================================================
+# TABLE 3: 75+ MORTALITY BY AC QUARTILE
+# ===========================================================================
+run_75_quartile <- function(data) {
+  feols(
+    taux_mortalite_75_plus ~
+      tg_new_tbin_lt_0 + tg_new_tbin_0_15 + tg_new_tbin_20_28 + tg_new_tbin_gt_28 +
+      hubin_0_20 + hubin_40_60 + hubin_60_80 + hubin_80_100 +
+      rrbin_0mm + rrbin_0_3 + rrbin_10_100 + rrbin_gt_100 +
+      fgbin_0_3 + fgbin_10_20 + fgbin_gt_20 |
+      COM^month + month^year + DEP^year,
+    data    = data,
+    cluster = ~COM,
+    weights = ~value_estimated_population
+  )
+}
+
+feols_q1 <- run_75_quartile(df_clim %>% filter(clim_quartile == 1))
+feols_q2 <- run_75_quartile(df_clim %>% filter(clim_quartile == 2))
+feols_q3 <- run_75_quartile(df_clim_q3)
+feols_q4 <- run_75_quartile(df_clim_q4)
+
+etable(feols_q1, feols_q2, feols_q3, feols_q4, tex = TRUE)
+
+# ===========================================================================
+# TABLE F: Q1+Q2 POOLED
+# ===========================================================================
+feols_q12 <- run_75_quartile(df_clim_q1_2)
+
+etable(feols_q12, feols_q3, feols_q4, tex = TRUE)
+
+# ===========================================================================
+# TABLE G: INCOME HETEROGENEITY WITHIN AC GROUPS (75+)
+# ===========================================================================
+run_income_75 <- function(data) {
+  feols(
+    taux_mortalite_75_plus ~
+      (tg_new_tbin_lt_0 + tg_new_tbin_0_15 + tg_new_tbin_20_28 + tg_new_tbin_gt_28) * rich +
+      rich +
+      hubin_0_20 + hubin_40_60 + hubin_60_80 + hubin_80_100 +
+      rrbin_0mm + rrbin_0_3 + rrbin_10_100 + rrbin_gt_100 +
+      fgbin_0_3 + fgbin_10_20 + fgbin_gt_20 |
+      COM^month + month^year + DEP^year,
+    data    = data,
+    cluster = ~COM,
+    weights = ~value_estimated_population
+  )
+}
+
+feols_low_income  <- run_income_75(df_clim_low)
+feols_high_income <- run_income_75(df_clim_high)
+
+etable(feols_low_income, feols_high_income, tex = TRUE)
+
+# ===========================================================================
+# TABLE H: RESTRICTED TO 2001-2010
+# ===========================================================================
+feols_low_2010  <- run_income_75(df_clim_low  %>% filter(year <= 2010))
+feols_high_2010 <- run_income_75(df_clim_high %>% filter(year <= 2010))
+
+etable(feols_low_2010, feols_high_2010, tex = TRUE)library(data.table)
+library(dplyr)
+library(fixest)
+library(ggplot2)
 library(arrow)
 library(car)
 #gc()
