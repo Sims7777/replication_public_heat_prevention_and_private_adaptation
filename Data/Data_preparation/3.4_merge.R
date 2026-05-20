@@ -1,6 +1,46 @@
 library(data.table)
 
 # ==============================================================================
+# LOAD
+# ==============================================================================
+log <- fread("C:/Users/simon/Desktop/master_thesis/final_data/panel_logement_insee_2006_2020_interpolated.csv")
+reg <- fread("C:/Users/simon/Desktop/master_thesis/final_data/df_final_reg_complet.csv")
+
+# ==============================================================================
+# NORMALIZE CODGEO
+# ==============================================================================
+log[, codgeo := trimws(codgeo)]
+log[, codgeo := gsub("[^0-9]", "", codgeo)]
+log <- log[nchar(codgeo) == 5]
+
+if ("COM" %in% names(reg)) {
+  setnames(reg, "COM", "codgeo")
+} else if ("CODGEO" %in% names(reg)) {
+  setnames(reg, "CODGEO", "codgeo")
+}
+reg[, codgeo := formatC(as.integer(codgeo), width = 5, flag = "0")]
+
+# Drop any pre-existing housing columns to avoid .x/.y conflicts
+cols_to_drop <- grep("^n_logements|^n_proprietaires|^n_hlm|^n_post_|^pct_proprietaires|^pct_hlm|^pct_post_|^interp_pct",
+                     names(reg), value = TRUE)
+if (length(cols_to_drop) > 0) reg[, (cols_to_drop) := NULL]
+
+# ==============================================================================
+# MERGE
+# ==============================================================================
+df_merged <- merge(
+  reg,
+  log,
+  by    = c("codgeo", "year"),
+  all.x = TRUE
+)
+
+# ==============================================================================
+# EXPORT
+# ==============================================================================
+fwrite(df_merged, "C:/Users/simon/Desktop/master_thesis/final_data/df_final_reg_logement.csv")library(data.table)
+
+# ==============================================================================
 # CHARGEMENT
 # ==============================================================================
 
