@@ -190,9 +190,70 @@ feols_low_2010  <- run_dose_income_75(df_clim_low[year  <= 2010])
 feols_high_2010 <- run_dose_income_75(df_clim_high[year <= 2010])
 
 etable(feols_low_2010, feols_high_2010, tex = TRUE)
+# ==============================================================================================
+# FIGURE 2: Effect of PNC activation on over-75 mortality by air conditioning group
+# ==============================================================================================
+df <- data.frame(
+  quartile = factor(
+    c("Q1–Q2\n(lowest AC)", "Q3", "Q4\n(highest AC)"),
+    levels = c("Q1–Q2\n(lowest AC)", "Q3", "Q4\n(highest AC)")
+  ),
+  coef = c(-0.4566, -0.1360,  0.0037),
+  se   = c( 0.0524,  0.0298,  0.0122),
+  sig  = c(TRUE, TRUE, FALSE)
+)
+
+df <- df %>%
+  mutate(
+    ci_lo = coef - 1.96 * se,
+    ci_hi = coef + 1.96 * se
+  )
+
+ggplot(df, aes(x = quartile, y = coef)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  geom_errorbar(
+    aes(ymin = ci_lo, ymax = ci_hi),
+    width     = 0.10,
+    linewidth = 0.7,
+    color     = "grey40"
+  ) +
+  geom_point(
+    aes(fill = sig),
+    shape     = 21,
+    size      = 3.5,
+    color     = "grey30",
+    linewidth = 0.5
+  ) +
+  scale_fill_manual(
+    values = c("TRUE" = "#1D6FA4", "FALSE" = "white"),
+    guide  = "none"
+  ) +
+  scale_y_continuous(
+    limits = c(-0.65, 0.15),
+    breaks = seq(-0.6, 0.1, by = 0.1),
+    labels = function(x) sprintf("%.1f", x)
+  ) +
+  labs(
+    x       = "Air conditioning penetration group (2001)",
+    y       = "Effect on mortality rate (75+)\ndeaths per 10,000 inhabitants"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    axis.title.y       = element_text(size = 10, margin = margin(r = 10)),
+    axis.title.x       = element_text(size = 10, margin = margin(t = 10)),
+    axis.text          = element_text(size = 10, color = "grey20"),
+    plot.caption       = element_text(size = 8, color = "grey40",
+                                      hjust = 0, margin = margin(t = 12)),
+    panel.grid.major.y = element_line(color = "grey92", linewidth = 0.4),
+    plot.margin        = margin(12, 16, 8, 8)
+  )
+
+ggsave("C:/Users/simon/Desktop/master_thesis/results/figure_pnc_ac_pooled.pdf", width = 6, height = 4.5, device = "pdf")
+ggsave("C:/Users/simon/Desktop/master_thesis/results/figure_pnc_ac_pooled.png", width = 6, height = 4.5, dpi = 300)
+
 
 # ===========================================================================
-# FIGURE 2: TEMPERATURE × 75+ MORTALITY BY AC GROUP AND INCOME
+# FIGURE 3: TEMPERATURE × 75+ MORTALITY BY AC GROUP AND INCOME
 # ===========================================================================
 order_levels <- c("< 0", "0 to 15", "15 to 20 (REF)", "20 to 28", "> 28")
 
@@ -279,6 +340,7 @@ fig_4g <- ggplot(df_plot4g,
 
 ggsave("C:/Users/simon/Desktop/master_thesis/results/fig_pnc_4group.png",
        plot = fig_4g, width = 8, height = 7, dpi = 300)
+
 
 # ===========================================================================
 # DESCRIPTIVE STATS
