@@ -11,7 +11,7 @@ This repository contains the code and data documentation to replicate the result
     ├── mortality/        # Figures and regressions — heat-related mortality
     ├── AC/               # Figures and regressions — mortality × air conditioning
     └── pnc/              # Figures and regressions — mortality × AC × heat-warning plan
-    └── robustness/       # Figures and regressions — mortality × heat-warning plan by housing vintages and historical exposition
+    └── robustness/       # Figures and regressions — mortality × heat-warning plan by building vintage and historical heat exposition
 ```
 ## Data
 
