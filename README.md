@@ -32,6 +32,7 @@ Two subfolders:
 | Emergency room travel times | https://www.data.gouv.fr/datasets/diagnostic-dacces-aux-soins-urgents |
 | Death records (from 1970) | https://www.data.gouv.fr/datasets/fichier-des-personnes-decedees |
 | Commune density | https://www.data.gouv.fr/datasets/communes-et-villes-de-france-en-csv-excel-json-parquet-et-feather |
+| Building vintage | https://www.insee.fr/fr/statistiques/8581994 |
 
 The following datasets were obtained via a data access request on [PROGEDO](https://www.progedo.fr):
 
