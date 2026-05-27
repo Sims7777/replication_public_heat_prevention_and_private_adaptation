@@ -5,13 +5,17 @@ This repository contains the code and data documentation to replicate the result
 ## Structure
 ```
 .
-├── Data_preparation/     # R scripts — run in order: 1.1 → 1.2 → 2.1 → ... → 6.1
-├── Download/             # Raw data and extraction scripts
-└── Results/
-    ├── mortality/        # Figures and regressions — heat-related mortality
-    ├── AC/               # Figures and regressions — mortality × air conditioning
-    └── pnc/              # Figures and regressions — mortality × AC × heat-warning plan
-    └── robustness/       # Figures and regressions — mortality × heat-warning plan by building vintage and historical heat exposition
+├── Data/                
+    ├── Data_preparation/ 
+        └── R scripts — run in order: 1.1 → 1.2 → 2.1 → ... → 6.1
+    ├── Download/         # Raw data and extraction scripts
+        └── data_meteo
+        └── data_pnc
+└── Results/              # Figures and regressions 
+    ├── mortality/        # Heat-related mortality
+    ├── AC/               # Mortality × air conditioning
+    ├── pnc/              # Mortality × AC × heat-warning plan
+    ├── robustness/       # Mortality × heat-warning plan by building vintage and historical heat exposition
 ```
 ## Data
 
