@@ -49,3 +49,9 @@ The following datasets were obtained via a data access request on [PROGEDO](http
 ## Replication
 
 Run the scripts in `Data_preparation/` sequentially (1.1 → 1.2 → 2.1 → ... → 6.1), then run the scripts in each `Results/` subfolder.
+
+## AI Assistance
+
+During the preparation of this replication package, I used ChatGPT to assist with code organisation and cleaning (restructuring scripts, standardising naming conventions, and improving readability). All code was reviewed and validated by the author. The analytical content and results remain the sole responsibility of the author.
+
+
